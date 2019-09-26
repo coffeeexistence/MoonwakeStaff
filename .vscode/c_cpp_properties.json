@@ -1,36 +1,42 @@
 {
-  "configurations": [
-    {
-      "defines": ["USBCON"],
-      "name": "Mac",
-      "includePath": [
-        "/Users/johnrivera/Library/Arduino15/packages/esp32/tools/**",
-        "/Users/johnrivera/Library/Arduino15/packages/esp32/hardware/esp32/1.0.2/**",
-        "/Applications/Arduino.app/Contents/Java/tools/**",
-        "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/**",
-        "${workspaceFolder}/libraries",
-        "${workspaceFolder}/**",
-        "/Applications/Arduino.app/Contents/Java/libraries",
-        "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/avr/include",
-        "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/variants/standard",
-        "/Users/johnrivera/Documents/Arduino/libraries/**"
-      ],
-      "browse": {
-        "limitSymbolsToIncludedHeaders": false,
-        "path": [
-          "/Applications/Arduino.app/Contents/Java/",
-          "/Users/johnrivera/Documents/Arduino/libraries/**"
-        ]
-      },
-      "forcedInclude": [
-        "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/cores/arduino/Arduino.h"
-      ],
-      "macFrameworkPath": ["/System/Library/Frameworks", "/Library/Frameworks"],
-      "intelliSenseMode": "clang-x64",
-      "compilerPath": "/usr/bin/clang",
-      "cStandard": "c11",
-      "cppStandard": "c++17"
-    }
-  ],
-  "version": 4
+    "configurations": [
+        {
+            "defines": [
+                "USBCON"
+            ],
+            "name": "Mac",
+            "includePath": [
+                "/Users/johnrivera/Library/Arduino15/packages/esp32/tools/**",
+                "/Users/johnrivera/Library/Arduino15/packages/esp32/hardware/esp32/1.0.2/**",
+                "/Applications/Arduino.app/Contents/Java/tools/**",
+                "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/**",
+                "${workspaceFolder}/libraries",
+                "${workspaceFolder}/**",
+                "/Applications/Arduino.app/Contents/Java/libraries",
+                "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/avr/include",
+                "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/variants/standard",
+                "/Users/johnrivera/Documents/Arduino/libraries/**",
+                "/Users/johnrivera/Documents/Arduino/libraries/FastLED/**"
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": false,
+                "path": [
+                    "/Applications/Arduino.app/Contents/Java/",
+                    "/Users/johnrivera/Documents/Arduino/libraries/**"
+                ]
+            },
+            "forcedInclude": [
+                "/Users/johnrivera/Documents/Arduino/libraries/FastLED/FastLED.h"
+            ],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ],
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
 }

@@ -4,7 +4,7 @@ float easing_linear(float t) { return t; }
 // accelerating from zero velocity
 float easing_easeInQuad(float t) { return t * t; }
 // decelerating to zero velocity
-float easing_easeOutQuad(float t) { return t * (2 - t); }
+float easing_easeOutQuad(float t) { return t * (2.0f - t); }
 // acceleration until halfway, then deceleration
 float easing_easeInOutQuad(float t) { return t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
 // accelerating from zero velocity
