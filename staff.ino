@@ -1,14 +1,18 @@
 #include "FastLED.h"
 
-#define MAX_BRIGHTNESS 20
+#define MAX_BRIGHTNESS 50 // TODO: 170
 #define COLOR_BLANK 0
 
-#define BASE_FADE 0.94f
+#define HIGH_FADE 0.88f
+#define MEDIUM_FADE 0.6f
+#define LOW_FADE 0.4f
+#define NO_FADE 0.2f
 
-#define PIN_KNOCK 33
-#define PIN_FSR 32
-#define PIN_STRIP_BRANCH 18
+#define PIN_KNOCK 34
+#define PIN_FSR 35
+#define PIN_STRIP_BRANCH 21
 #define PIN_STRIP_BASE_0 19
+#define PIN_STRIP_BASE_1 18
 
 // Needed for ESP32
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -34,20 +38,28 @@ struct LEDStrip
 };
 
 // #define STRIP_BRANCH_LENGTH 20
-#define STRIP_BRANCH_LENGTH 1
+#define STRIP_BRANCH_LENGTH 70
 CRGB strip_branch_LEDState[STRIP_BRANCH_LENGTH];
 constexpr struct LEDStrip strip_branch = {
     .length = STRIP_BRANCH_LENGTH,
     .pin = PIN_STRIP_BRANCH,
     .state = strip_branch_LEDState};
 
-// #define STRIP_BASE_0_LENGTH 60
-#define STRIP_BASE_0_LENGTH 5
+#define STRIP_BASE_0_LENGTH 70
+// #define STRIP_BASE_0_LENGTH 20
 CRGB strip_base0_LEDState[STRIP_BASE_0_LENGTH];
 constexpr struct LEDStrip strip_base0 = {
     .length = STRIP_BASE_0_LENGTH,
     .pin = PIN_STRIP_BASE_0,
     .state = strip_base0_LEDState};
+
+// #define STRIP_BASE_1_LENGTH 20
+#define STRIP_BASE_1_LENGTH 70
+CRGB strip_base1_LEDState[STRIP_BASE_1_LENGTH];
+constexpr struct LEDStrip strip_base1 = {
+    .length = STRIP_BASE_1_LENGTH,
+    .pin = PIN_STRIP_BASE_1,
+    .state = strip_base1_LEDState};
 
 struct AnimationRunnerStatus
 {
@@ -64,10 +76,13 @@ uint32_t iterationCount = 0;
 void setup()
 {
     FastLED.addLeds<NEOPIXEL, strip_branch.pin>(strip_branch.state, strip_branch.length);
-    fill_solid(strip_branch.state, strip_branch.length, CRGB::Blue);
+    fill_solid(strip_branch.state, strip_branch.length, CRGB::Black);
 
     FastLED.addLeds<NEOPIXEL, strip_base0.pin>(strip_base0.state, strip_base0.length);
     fill_solid(strip_base0.state, strip_base0.length, CRGB::Black);
+
+    FastLED.addLeds<NEOPIXEL, strip_base1.pin>(strip_base1.state, strip_base1.length);
+    fill_solid(strip_base1.state, strip_base1.length, CRGB::Black);
 
     FastLED.setBrightness(MAX_BRIGHTNESS);
     Serial.begin(9600);
@@ -99,14 +114,15 @@ void storeKnockValue(uint16_t knockValue)
 
 bool checkDidKnock()
 {
-    Serial.println(analogRead(PIN_KNOCK));
-    return false; // TODO
+
+    // return false; // TODO
     storeKnockValue(analogRead(PIN_KNOCK));
     // Below threshold
     if (getAverageKnockValue() < threshold)
     {
         return false;
     }
+    // Serial.println(getAverageKnockValue());
     current_time = millis();
 
     // Last knock happened too recently
@@ -147,8 +163,11 @@ struct Animation
     CRGB primaryColor;
 };
 
-struct Animation fillAndShimmer_bases = {0, 700, false, CRGB::ForestGreen};
-struct Animation activeStateAnimation = {0, 5000, false, CRGB::ForestGreen};
+CRGB mainColor = CRGB(0xFFA054);
+struct Animation fillAndShimmer_bases = {0, 1000, false, mainColor};
+struct Animation fillAndShimmer_branch = {0, 1000, false, mainColor};
+struct Animation activeStateAnimation = {0, 5000, false, mainColor};
+struct Animation activeStateFSRAnimation = {0, 7000, true, mainColor}; // This is always on but is only used by activeStateAnimation
 
 bool is_animation_finished(struct Animation *animation)
 {
@@ -161,20 +180,27 @@ void start_animation(struct Animation *animation)
     animation->isActive = true;
 }
 
-void animateHelper_progressiveSlideIn(float progress, struct CRGB color, struct LEDStrip strip)
+void animateHelper_progressiveSlideIn(float progress, struct CRGB color, struct LEDStrip strip, bool reverse)
 {
     uint8_t endPixel = min(progress * strip.length, strip.length - 1);
+
     for (uint8_t i = 0; i <= endPixel; i++)
     {
         uint8_t scale = 255;
         uint8_t distanceFromEndPixel = endPixel - i;
         if (distanceFromEndPixel <= 3 && endPixel < strip.length - 3)
         {
-            scale = (80 / distanceFromEndPixel);
+            scale = 80 / (distanceFromEndPixel + 1); // Ensure we don't divide by zero
             color.fadeToBlackBy(scale);
         }
-
-        strip.state[i] = color;
+        if (!reverse)
+        {
+            strip.state[i] = color;
+        }
+        else
+        {
+            strip.state[strip.length - 1 - i] = color;
+        }
     }
 }
 
@@ -191,19 +217,48 @@ void animateHelper_fadeBrightness(uint8_t amount, struct LEDStrip strip)
     }
 }
 
+// Helper function that blends one uint8_t toward another by a given amount
+void nblendU8TowardU8(uint8_t &cur, const uint8_t target, uint8_t amount)
+{
+    if (cur == target)
+        return;
+
+    if (cur < target)
+    {
+        uint8_t delta = target - cur;
+        delta = scale8_video(delta, amount);
+        cur += delta;
+    }
+    else
+    {
+        uint8_t delta = cur - target;
+        delta = scale8_video(delta, amount);
+        cur -= delta;
+    }
+}
+
+void animateHelper_fadeToColor(struct CRGB target, uint8_t amount, struct LEDStrip strip)
+{
+    for (uint8_t i = 0; i <= strip.length - 1; i++)
+    {
+        nblendU8TowardU8(strip.state[i].red, target.red, amount);
+        nblendU8TowardU8(strip.state[i].green, target.green, amount);
+        nblendU8TowardU8(strip.state[i].blue, target.blue, amount);
+    }
+}
+
 #define BETWEEN(value, min, max) (value <= max && value >= min)
 
-void animateStep_SLIDE_IN_AND_SHIMMER(struct Animation *animation, struct LEDStrip strip)
+void animateStep_SLIDE_IN_AND_SHIMMER(struct Animation *animation, struct LEDStrip strip, bool reverse)
 {
     float progress = (float)animation->step / (float)animation->duration;
-    progress = easing_easeOutQuad(progress);
+    // progress = easing_easeOutQuad(progress);
     if (BETWEEN(progress, 0, 1))
     {
         CRGB color = animation->primaryColor;
-        color.fadeToBlackBy(255.f * BASE_FADE);
-        animateHelper_progressiveSlideIn(progress, color, strip);
+        color.fadeToBlackBy(255.f * HIGH_FADE);
+        animateHelper_progressiveSlideIn(progress, color, strip, reverse);
     }
-    animation->step++;
 }
 
 // void animateStep_SLIDE_IN_SLIDE_OUT(struct Animation *animation, struct LEDStrip strip)
@@ -221,7 +276,6 @@ void animateStep_SLIDE_IN_AND_SHIMMER(struct Animation *animation, struct LEDStr
 
 float averageRawForce = 0;
 uint8_t averageFade = 255;
-uint8_t currentPixelTrailingFSR = 0;
 bool TRAILING_FSR = true;
 const float forceFloor = 0.65;
 void refreshFSRForce()
@@ -240,7 +294,7 @@ float getFSRForce()
     return min(normalizedForce, 1);
 }
 
-void animateFromFSRInput(float normalizedForce, struct LEDStrip strip)
+void animateFromFSRInput(float normalizedForce, struct LEDStrip strip, struct CRGB color, uint8_t currentPixel)
 {
     // This should be named better
     uint16_t x = 255 * normalizedForce;
@@ -251,26 +305,26 @@ void animateFromFSRInput(float normalizedForce, struct LEDStrip strip)
     if (!TRAILING_FSR)
     {
         // Standard static animation
-        setPixelRangeToColorWithFade(0, strip.length - 1, CRGB::Plum, fade, strip);
+        setPixelRangeToColorWithFade(0, strip.length - 1, color, fade, strip);
         return;
     }
-    // Run TRAILING_FSR animation
-    if (currentPixelTrailingFSR > strip.length - 1)
-    {
-        currentPixelTrailingFSR = 0;
-    }
-    else if (iterationCount % 17 == 0) // Must be odd numbers lol
-    {
-        currentPixelTrailingFSR++;
-        animateHelper_fadeBrightness(1, strip);
-    }
-    strip.state[currentPixelTrailingFSR] = CRGB::Plum;
-    strip.state[currentPixelTrailingFSR].fadeToBlackBy(fade);
+    // // Run TRAILING_FSR animation
+    // if (currentPixelTrailingFSR > strip.length - 1)
+    // {
+    //     currentPixelTrailingFSR = 0;
+    // }
+    // else if (iterationCount % 27 == 0) // Must be odd numbers lol
+    // {
+    //     currentPixelTrailingFSR++;
+    //     animateHelper_fadeBrightness(1, strip);
+    // }
+    strip.state[currentPixel] = color;
+    strip.state[currentPixel].fadeToBlackBy(fade);
 
-    uint8_t stripEndPixel = strip.length - 1;
-    uint8_t otherSide = (currentPixelTrailingFSR + (stripEndPixel / 2)) % stripEndPixel;
-    strip.state[otherSide] = CRGB::Plum;
-    strip.state[otherSide].fadeToBlackBy(fade);
+    // uint8_t stripEndPixel = strip.length - 1;
+    // uint8_t otherSide = (currentPixelTrailingFSR + (stripEndPixel / 2)) % stripEndPixel;
+    // strip.state[otherSide] = color;
+    // strip.state[otherSide].fadeToBlackBy(fade);
 }
 
 bool canReadKnockInput()
@@ -289,14 +343,40 @@ struct AnimationRunnerStatus runTimedAnimations(struct AnimationRunnerStatus sta
 {
     if (fillAndShimmer_bases.isActive)
     {
+        // if(iterationCount % 200 == 0) {
+        //         Serial.println("fillAndShimmer_bases");
+        //     }
+
         if (is_animation_finished(&fillAndShimmer_bases))
         {
             fillAndShimmer_bases.isActive = false;
+            start_animation(&fillAndShimmer_branch);
+            return status;
+        }
+        status.isAnimatingStrip_base0 = true;
+        // TODO
+        animateStep_SLIDE_IN_AND_SHIMMER(&fillAndShimmer_bases, strip_base0, true);
+        animateStep_SLIDE_IN_AND_SHIMMER(&fillAndShimmer_bases, strip_base1, true);
+        fillAndShimmer_bases.step++;
+
+        return status;
+    }
+
+    if (fillAndShimmer_branch.isActive)
+    {
+        // if(iterationCount % 200 == 0) {
+        //         Serial.println("fillAndShimmer_branch");
+        //     }
+        if (is_animation_finished(&fillAndShimmer_branch))
+        {
+            fillAndShimmer_branch.isActive = false;
             start_animation(&activeStateAnimation);
             return status;
         }
         status.isAnimatingStrip_base0 = true;
-        animateStep_SLIDE_IN_AND_SHIMMER(&fillAndShimmer_bases, strip_base0);
+        animateStep_SLIDE_IN_AND_SHIMMER(&fillAndShimmer_branch, strip_branch, false);
+        fillAndShimmer_branch.step++;
+
         return status;
     }
 
@@ -305,21 +385,26 @@ struct AnimationRunnerStatus runTimedAnimations(struct AnimationRunnerStatus sta
 
 struct AnimationRunnerStatus runDynamicAnimations(struct AnimationRunnerStatus status)
 {
-    float averageNormalizedFSRForce = 0;
-    if (canReadFSRInput() && !status.isAnimatingStrip_branch)
-    {
-        refreshFSRForce();
-        averageNormalizedFSRForce = getFSRForce();
-    }
-    if (averageNormalizedFSRForce != 0)
-    {
-        animateFromFSRInput(averageNormalizedFSRForce, strip_branch);
-        status.isAnimatingStrip_branch = true;
-    }
+    // float averageNormalizedFSRForce = 0;
+    // if (canReadFSRInput() && !status.isAnimatingStrip_branch)
+    // {
+    //     refreshFSRForce();
+    //     averageNormalizedFSRForce = getFSRForce();
+    // }
+    // if (averageNormalizedFSRForce != 0)
+    // {
+    //     // Serial.println(averageNormalizedFSRForce);
+    //     animateFromFSRInput(averageNormalizedFSRForce, strip_branch, CRGB::Plum);
+    //     animateFromFSRInput(averageNormalizedFSRForce, strip_base0, CRGB::Plum);
+    //     animateFromFSRInput(averageNormalizedFSRForce, strip_base1, CRGB::Plum);
+    //     status.isAnimatingStrip_branch = true;
+    // }
     return status;
 }
 
+bool atLastStep = false;
 bool hasGoneThroughFullActiveStateAnimation = false;
+uint8_t lastStepTrailPixel = 0;
 struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatus status)
 {
     if (activeStateAnimation.isActive)
@@ -336,10 +421,57 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
         {
             refreshFSRForce();
         }
-        uint8_t fade = 255 * BASE_FADE;
-        fade -= getFSRForce() * BASE_FADE * 255;
+        // Serial.println(getFSRForce());
+        bool isIncrementing = true;
+        if (getFSRForce() > 0.5)
+        {
+            if (activeStateFSRAnimation.step < activeStateFSRAnimation.duration)
+            {
+                activeStateFSRAnimation.step += 1;
+                isIncrementing = true;
+            }
+        }
+        else
+        {
+            if (activeStateFSRAnimation.step > 1)
+            {
+                activeStateFSRAnimation.step -= 1;
+                isIncrementing = false;
+            }
+        }
+
+        float progress = (float)activeStateFSRAnimation.step / (float)activeStateFSRAnimation.duration;
+        progress *= 4.f;
+        // Serial.println(progress);
 
         CRGB color = activeStateAnimation.primaryColor;
+        bool atLastStep = BETWEEN(progress, 3, 5);
+        uint8_t fade;
+        if (BETWEEN(progress, 0, 1))
+        {
+            fade = 255.f * MEDIUM_FADE;
+        }
+        else if (BETWEEN(progress, 1, 2))
+        {
+            progress -= 1;
+            fade = 255.f * LOW_FADE;
+        }
+        else if (BETWEEN(progress, 2, 3))
+        {
+            progress -= 2;
+            fade = 255.f * NO_FADE;
+        }
+        else if (BETWEEN(progress, 3, 5))
+        { // Did 5 just in case of floating precision errors
+            progress -= 3;
+            fade = 255.f * NO_FADE;
+            // if (iterationCount % 200 == 0)
+            // {
+            //     Serial.println("NO_FADE");
+            // }
+        }
+        // progress is now between 0 and 1
+
         if (is_animation_finished(&activeStateAnimation))
         {
             hasGoneThroughFullActiveStateAnimation = true;
@@ -347,8 +479,76 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
         }
 
         color.fadeToBlackBy(fade);
-        fill_solid(strip_branch.state, strip_branch.length, color);
-        fill_solid(strip_base0.state, strip_branch.length, color);
+
+        if (atLastStep)
+        {
+
+            // float sin = (float)sin8(iterationCount) / 255.f;
+            // float cos = (float)cos8(iterationCount) / 255.f;
+            uint8_t pixel;
+            if (lastStepTrailPixel < STRIP_BASE_0_LENGTH)
+            {
+                pixel = STRIP_BASE_0_LENGTH - 1 - lastStepTrailPixel;
+                animateFromFSRInput(1.f, strip_base0, CRGB::DarkOliveGreen, pixel);
+                animateFromFSRInput(1.f, strip_base1, CRGB::DarkOliveGreen, pixel);
+            }
+            else
+            {
+                pixel = lastStepTrailPixel - STRIP_BASE_0_LENGTH - 1;
+                animateFromFSRInput(1.f, strip_branch, CRGB::DarkOliveGreen, pixel);
+            }
+
+            if (lastStepTrailPixel > (STRIP_BASE_0_LENGTH * 2) - 1)
+            {
+                lastStepTrailPixel = 0;
+            }
+            else
+            {
+                if (iterationCount % 17 == 0)
+                {
+                    lastStepTrailPixel++;
+                }
+            }
+            if (iterationCount % 4 == 0)
+            {
+                animateHelper_fadeToColor(color, 2, strip_base0);
+                animateHelper_fadeToColor(color, 2, strip_base1);
+                animateHelper_fadeToColor(color, 2, strip_branch);
+            }
+        }
+        else
+        {
+            // Base animation state
+            if (BETWEEN(progress, 0.f, 0.01f))
+            {
+                CRGB base0Color = color;
+                CRGB base1Color = color;
+                CRGB branchColor = color;
+                current_time = millis();
+                uint8_t timeBasedSinWave = sin8(current_time) / 4;
+                uint8_t timeBasedCosWave = cos8(current_time) / 4;
+                base0Color.fadeLightBy(timeBasedSinWave);
+                base1Color.fadeLightBy(timeBasedSinWave);
+                branchColor.fadeLightBy(timeBasedCosWave);
+                // animateHelper_fadeToColor(base0Color, 2, strip_base0);
+                // animateHelper_fadeToColor(base1Color, 2, strip_base1);
+                // animateHelper_fadeToColor(branchColor, 2, strip_branch);
+                fill_solid(strip_base0.state, strip_base0.length, base0Color);
+                fill_solid(strip_base1.state, strip_base1.length, base1Color);
+                fill_solid(strip_branch.state, strip_branch.length, branchColor);
+            }
+            else if (BETWEEN(progress, 0.f, 0.5f))
+            {
+                animateHelper_progressiveSlideIn(progress * 2.f, color, strip_base0, true);
+                animateHelper_progressiveSlideIn(progress * 2.f, color, strip_base1, true);
+            }
+            else if (BETWEEN(progress, 0.5f, 1.f))
+            {
+                progress -= 0.5f;
+                animateHelper_progressiveSlideIn(progress * 2.f, color, strip_branch, false);
+            }
+        }
+
         status.isAnimatingStrip_base0 = true;
         status.isAnimatingStrip_branch = true;
         activeStateAnimation.step++;
@@ -359,22 +559,25 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
 
 struct AnimationRunnerStatus runFadeAnimations(struct AnimationRunnerStatus status)
 {
-    if (iterationCount % 2 != 0)
-    {
-        return status;
-    }
+    // if (iterationCount % 2 != 0)
+    // {
+    //     return status;
+    // }
 
-    if (!status.isAnimatingStrip_base0)
-    {
-        animateHelper_fadeBrightness(1, strip_base0);
-        status.isAnimatingStrip_base0 = true;
-    }
-    if (!status.isAnimatingStrip_branch)
-    {
-        animateHelper_fadeBrightness(1, strip_branch);
-        status.isAnimatingStrip_branch = true;
-    }
-    return status;
+    // if (!status.isAnimatingStrip_base0)
+    // {
+    //     animateHelper_fadeBrightness(1, strip_base0);
+    //     status.isAnimatingStrip_base0 = true;
+    // }
+
+    // animateHelper_fadeBrightness(1, strip_base1);
+
+    // if (!status.isAnimatingStrip_branch)
+    // {
+    //     animateHelper_fadeBrightness(1, strip_branch);
+    //     status.isAnimatingStrip_branch = true;
+    // }
+    // return status;
 }
 
 AnimationRunnerStatus animationFrameStatus;
@@ -382,9 +585,9 @@ void runAnimationFrame()
 {
     animationFrameStatus = {.isAnimatingStrip_base0 = false, .isAnimatingStrip_branch = false};
     animationFrameStatus = runTimedAnimations(animationFrameStatus);
-    animationFrameStatus = runDynamicAnimations(animationFrameStatus);
+    // animationFrameStatus = runDynamicAnimations(animationFrameStatus);
     animationFrameStatus = runActiveStateAnimation(animationFrameStatus);
-    runFadeAnimations(animationFrameStatus);
+    // runFadeAnimations(animationFrameStatus);
 }
 
 // unsigned long startTime = 0;
@@ -392,22 +595,23 @@ void runAnimationFrame()
 
 void loop()
 {
-    if (canReadKnockInput() && checkDidKnock()) // Light strip animations seem to make knock sensor readings higher (???) - may be due to current draw
+    if (!activeStateAnimation.isActive && canReadKnockInput() && checkDidKnock()) // Light strip animations seem to make knock sensor readings higher (???) - may be due to current draw
     {
         start_animation(&fillAndShimmer_bases);
     }
+
     runAnimationFrame();
 
     if (iterationCount % 4 == 0)
     {
 
-        // FastLED.show();
+        FastLED.show();
         // endTime = millis();
         // Serial.println("v delta v");
         // Serial.println(millis() - endTime);
     }
 
     // delayMicroseconds(1000);
-    delay(10);
+    delay(1);
     iterationCount++;
 }

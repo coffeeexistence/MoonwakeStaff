@@ -1,6 +1,6 @@
 {
-    "board": "esp32:esp32:esp32wrover",
+    "board": "esp32:esp32:esp32",
     "sketch": "staff.ino",
     "port": "/dev/cu.SLAB_USBtoUART",
-    "configuration": "PartitionScheme=default,FlashMode=qio,FlashFreq=80,UploadSpeed=921600,DebugLevel=none"
+    "configuration": "PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=none"
 }
