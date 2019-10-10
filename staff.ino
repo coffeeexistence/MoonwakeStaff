@@ -1,11 +1,11 @@
 #include "FastLED.h"
 
-#define MAX_BRIGHTNESS 50 // TODO: 170
+#define MAX_BRIGHTNESS 170 // TODO: 170
 #define COLOR_BLANK 0
 
 #define HIGH_FADE 0.88f
-#define MEDIUM_FADE 0.6f
-#define LOW_FADE 0.4f
+#define MEDIUM_FADE 0.55f
+#define LOW_FADE 0.45f
 #define NO_FADE 0.2f
 
 #define PIN_KNOCK 34
@@ -405,6 +405,7 @@ struct AnimationRunnerStatus runDynamicAnimations(struct AnimationRunnerStatus s
 bool atLastStep = false;
 bool hasGoneThroughFullActiveStateAnimation = false;
 uint8_t lastStepTrailPixel = 0;
+uint8_t initialAnimationIteration = 0;
 struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatus status)
 {
     if (activeStateAnimation.isActive)
@@ -446,12 +447,9 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
 
         CRGB color = activeStateAnimation.primaryColor;
         bool atLastStep = BETWEEN(progress, 3, 5);
-        uint8_t fade;
-        if (BETWEEN(progress, 0, 1))
-        {
-            fade = 255.f * MEDIUM_FADE;
-        }
-        else if (BETWEEN(progress, 1, 2))
+
+        uint8_t fade = 255.f * HIGH_FADE;
+        if (BETWEEN(progress, 1, 2))
         {
             progress -= 1;
             fade = 255.f * LOW_FADE;
@@ -504,12 +502,12 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
             }
             else
             {
-                if (iterationCount % 17 == 0)
+                if (iterationCount % 14 == 0)
                 {
                     lastStepTrailPixel++;
                 }
             }
-            if (iterationCount % 4 == 0)
+            if (iterationCount % 7 == 0)
             {
                 animateHelper_fadeToColor(color, 2, strip_base0);
                 animateHelper_fadeToColor(color, 2, strip_base1);
@@ -518,18 +516,33 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
         }
         else
         {
-            // Base animation state
-            if (BETWEEN(progress, 0.f, 0.01f))
+            // // Base animation state
+            if (activeStateFSRAnimation.step < 5)
             {
                 CRGB base0Color = color;
                 CRGB base1Color = color;
                 CRGB branchColor = color;
                 current_time = millis();
-                uint8_t timeBasedSinWave = sin8(current_time) / 4;
-                uint8_t timeBasedCosWave = cos8(current_time) / 4;
-                base0Color.fadeLightBy(timeBasedSinWave);
-                base1Color.fadeLightBy(timeBasedSinWave);
-                branchColor.fadeLightBy(timeBasedCosWave);
+                // sin8(speed) / intensity
+                uint8_t timeBasedSinWave = sin8(current_time / 3);
+                uint8_t timeBasedCosWave = sin8(current_time / 3);
+                uint8_t timeBasedArcSinWave = sin8((current_time / 3) + 128);
+                // fade intensity
+                timeBasedArcSinWave = (float)timeBasedArcSinWave * 0.7f;
+                timeBasedSinWave = (float)timeBasedSinWave * 0.7f;
+                timeBasedCosWave = (float)timeBasedCosWave * 0.7f;
+
+                timeBasedArcSinWave = min(timeBasedArcSinWave, initialAnimationIteration);
+                timeBasedSinWave = min(timeBasedSinWave, initialAnimationIteration);
+                timeBasedCosWave = min(timeBasedCosWave, initialAnimationIteration);
+
+                base0Color.fadeToBlackBy(timeBasedSinWave);
+                base1Color.fadeToBlackBy(timeBasedSinWave);
+                branchColor.fadeToBlackBy(timeBasedArcSinWave);
+
+                // base0Color.fadeToBlackBy(initialAnimationIteration);
+                // base1Color.fadeToBlackBy(initialAnimationIteration);
+                // branchColor.fadeToBlackBy(initialAnimationIteration);
                 // animateHelper_fadeToColor(base0Color, 2, strip_base0);
                 // animateHelper_fadeToColor(base1Color, 2, strip_base1);
                 // animateHelper_fadeToColor(branchColor, 2, strip_branch);
@@ -552,6 +565,11 @@ struct AnimationRunnerStatus runActiveStateAnimation(struct AnimationRunnerStatu
         status.isAnimatingStrip_base0 = true;
         status.isAnimatingStrip_branch = true;
         activeStateAnimation.step++;
+        if (initialAnimationIteration < 255)
+        {
+            initialAnimationIteration++;
+        }
+
         return status;
     }
     return status;

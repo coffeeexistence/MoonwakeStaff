@@ -10,7 +10,7 @@ float easing_easeInOutQuad(float t) { return t < .5 ? 2 * t * t : -1 + (4 - 2 * 
 // accelerating from zero velocity
 float easing_easeInCubic(float t) { return t * t * t; }
 // decelerating to zero velocity
-float easing_easeOutCubic(float t) { return (--t) * t * t + 1; }
+float easing_easeOutCubic(float t) { return (--t) * t * t + 1.f; }
 // acceleration until halfway, then deceleration
 float easing_easeInOutCubic(float t) { return t < .5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1; }
 // accelerating from zero velocity
